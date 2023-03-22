@@ -21,6 +21,7 @@ const (
 	defaultCacheSyncTimeout               = 2 * time.Minute
 	defaultListenerPort                   = 9080
 	defaultLogLevel                       = log.WarnLevel
+	defaultPurgeFinalizerTimeout          = 10 * time.Second //5 * time.Minute
 )
 
 //nolint:funlen
@@ -95,6 +96,11 @@ func defineFlagVar() *FlagVar {
 		&flagVar.logLevel, "log-level", defaultLogLevel,
 		"indicates the current log-level, enter negative values to increase verbosity (e.g. 9)",
 	)
+	flag.BoolVar(&flagVar.enablePurgeFinalizer, "enable-purge-finalizer", true,
+		"Enabling purge finalizer")
+	flag.DurationVar(&flagVar.purgeFinalizerTimeout, "purge-finalizer-timeout", defaultPurgeFinalizerTimeout,
+		"Indicates the SKR Purge Finalizers execution delay in seconds")
+
 	return flagVar
 }
 
@@ -131,4 +137,6 @@ type FlagVar struct {
 	cacheSyncTimeout                       time.Duration
 	enableDomainNameVerification           bool
 	logLevel                               int
+	enablePurgeFinalizer                   bool
+	purgeFinalizerTimeout                  time.Duration
 }

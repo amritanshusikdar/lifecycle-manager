@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -283,28 +284,32 @@ func setupKymaReconciler(
 		os.Exit(1)
 	}
 
-	if err := (&controllers.PurgeReconciler{
-		Client:            mgr.GetClient(),
-		EventRecorder:     mgr.GetEventRecorderFor(operatorv1beta1.OperatorName),
-		KcpRestConfig:     kcpRestConfig,
-		RemoteClientCache: remoteClientCache,
-		SKRWebhookManager: skrWebhookManager,
-		RequeueIntervals: controllers.RequeueIntervals{
-			Success: flagVar.kymaRequeueSuccessInterval,
-		},
-		VerificationSettings: signature.VerificationSettings{
-			PublicKeyFilePath:   flagVar.moduleVerificationKeyFilePath,
-			ValidSignatureNames: strings.Split(flagVar.moduleVerificationSignatureNames, ":"),
-		},
-	}).SetupWithManager(
-		mgr, options, controllers.SetupUpSetting{
-			ListenerAddr:                 flagVar.kymaListenerAddr,
-			EnableDomainNameVerification: flagVar.enableDomainNameVerification,
-			IstioNamespace:               flagVar.istioNamespace,
-		},
-	); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PurgeReconciler")
-		os.Exit(1)
+	if flagVar.enablePurgeFinalizer {
+		fmt.Println("====================", flagVar.purgeFinalizerTimeout)
+		if err := (&controllers.PurgeReconciler{
+			Client:            mgr.GetClient(),
+			EventRecorder:     mgr.GetEventRecorderFor(operatorv1beta1.OperatorName),
+			KcpRestConfig:     kcpRestConfig,
+			RemoteClientCache: remoteClientCache,
+			SKRWebhookManager: skrWebhookManager,
+			RequeueIntervals: controllers.RequeueIntervals{
+				Success: flagVar.kymaRequeueSuccessInterval,
+			},
+			VerificationSettings: signature.VerificationSettings{
+				PublicKeyFilePath:   flagVar.moduleVerificationKeyFilePath,
+				ValidSignatureNames: strings.Split(flagVar.moduleVerificationSignatureNames, ":"),
+			},
+			PurgeFinalizerTimeout: flagVar.purgeFinalizerTimeout,
+		}).SetupWithManager(
+			mgr, options, controllers.SetupUpSetting{
+				ListenerAddr:                 flagVar.kymaListenerAddr,
+				EnableDomainNameVerification: flagVar.enableDomainNameVerification,
+				IstioNamespace:               flagVar.istioNamespace,
+			},
+		); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "PurgeReconciler")
+			os.Exit(1)
+		}
 	}
 
 	metrics.Initialize()

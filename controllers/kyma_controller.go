@@ -44,7 +44,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	ctrlLog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -77,9 +76,10 @@ type PurgeReconciler struct {
 	record.EventRecorder
 	RequeueIntervals
 	signature.VerificationSettings
-	SKRWebhookManager watcher.SKRWebhookManager
-	KcpRestConfig     *rest.Config
-	RemoteClientCache *remote.ClientCache
+	SKRWebhookManager     watcher.SKRWebhookManager
+	KcpRestConfig         *rest.Config
+	RemoteClientCache     *remote.ClientCache
+	PurgeFinalizerTimeout time.Duration
 }
 
 //nolint:lll
@@ -349,7 +349,8 @@ func (r *KymaReconciler) handleDeletingState(ctx context.Context, kyma *v1beta1.
 		logger.Info("removed remote finalizer")
 	}
 
-	controllerutil.RemoveFinalizer(kyma, v1beta1.Finalizer)
+	//TODO: Uncomment after the testing is done!
+	//controllerutil.RemoveFinalizer(kyma, v1beta1.Finalizer)
 
 	if err := r.Update(ctx, kyma); err != nil {
 		err := fmt.Errorf("error while trying to udpate kyma during deletion: %w", err)
@@ -483,7 +484,7 @@ func (r *KymaReconciler) WatcherEnabled(kyma *v1beta1.Kyma) bool {
 func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := ctrlLog.FromContext(ctx)
 	logger.V(log.InfoLevel).Info("reconciling")
-	fmt.Println("AAAAAAAAAA")
+	fmt.Println("Purge Reconciler loop runs")
 
 	ctx = adapter.ContextWithRecorder(ctx, r.EventRecorder)
 
@@ -499,9 +500,35 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	// check if deletionTimestamp is set, retry until it gets fully deleted
-	//if !kyma.DeletionTimestamp.IsZero() && kyma.Status.State != v1beta1.StateDeleting {
-	//		return r.deleteKyma(ctx, kyma)
-	//	}
+	if !kyma.DeletionTimestamp.IsZero() && kyma.Status.State == v1beta1.StateDeleting {
+
+		//Check if enough time has passed
+
+		//About the times:
+		//1) DeletionTimestamp - set by K8s
+		//2) Then after some time our controller is notified
+		//3) Then after some time our controller changes the Kyma status to "Deleting"
+		// If time difference between 1 and 3 is about 1 second or less, we may use "DeletionTimestamp" directly.
+		// If it's longer then maybe we should base our logic on the time when 3) happened.
+
+		timeRequired := kyma.DeletionTimestamp.Add(r.PurgeFinalizerTimeout)
+
+		fmt.Println("r.PurgeFinalizerTimeout", r.PurgeFinalizerTimeout)
+		fmt.Println("timeRequired", timeRequired)
+		fmt.Println("time.Now()", time.Now())
+
+		if time.Now().After(timeRequired) {
+			//In this block of code the actual finalizer dropping on the target cluster should happen.
+			fmt.Println("Deleting finalizers...")
+
+			return ctrl.Result{}, nil
+		}
+
+		return ctrl.Result{
+			Requeue:      true,
+			RequeueAfter: 1 * time.Second,
+		}, nil
+	}
 
 	return ctrl.Result{}, nil
 }
