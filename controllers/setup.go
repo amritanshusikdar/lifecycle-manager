@@ -147,3 +147,23 @@ func (r *WatcherReconciler) SetupWithManager(mgr ctrl.Manager, options controlle
 		WithOptions(options).
 		Complete(r)
 }
+
+// SetupWithManager sets up the Kyma controller with the Manager.
+func (r *PurgeReconciler) SetupWithManager(mgr ctrl.Manager,
+	options controller.Options, settings SetupUpSetting,
+) error {
+	controllerBuilder := ctrl.NewControllerManagedBy(mgr).For(&v1beta1.Kyma{}).WithOptions(options)
+	// here we define a watch on secrets for the lifecycle-manager so that the cache is picking up changes
+	//TODO: Is it necessary here?
+	// Watches(&source.Kind{Type: &corev1.Secret{}}, handler.Funcs{})
+
+	//TODO: Is it necessary here?
+	//controllerBuilder = controllerBuilder.Watches(&source.Kind{Type: &v1beta1.Manifest{}},
+	//&watch.RestrictedEnqueueRequestForOwner{Log: ctrl.Log, OwnerType: &v1beta1.Kyma{}, IsController: true})
+
+	if err := controllerBuilder.Complete(r); err != nil {
+		return fmt.Errorf("error occurred while building controller: %w", err)
+	}
+
+	return nil
+}

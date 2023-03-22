@@ -71,6 +71,17 @@ type KymaReconciler struct {
 	RemoteClientCache *remote.ClientCache
 }
 
+// PurgeReconciler reconciles a Kyma object.
+type PurgeReconciler struct {
+	client.Client
+	record.EventRecorder
+	RequeueIntervals
+	signature.VerificationSettings
+	SKRWebhookManager watcher.SKRWebhookManager
+	KcpRestConfig     *rest.Config
+	RemoteClientCache *remote.ClientCache
+}
+
 //nolint:lll
 //+kubebuilder:rbac:groups=operator.kyma-project.io,resources=kymas,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=operator.kyma-project.io,resources=kymas/status,verbs=get;update;patch
@@ -465,4 +476,32 @@ func (r *KymaReconciler) WatcherEnabled(kyma *v1beta1.Kyma) bool {
 		return true
 	}
 	return false
+}
+
+// Reconcile is part of the main kubernetes reconciliation loop which aims to
+// move the current state of the cluster closer to the desired state.
+func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := ctrlLog.FromContext(ctx)
+	logger.V(log.InfoLevel).Info("reconciling")
+	fmt.Println("AAAAAAAAAA")
+
+	ctx = adapter.ContextWithRecorder(ctx, r.EventRecorder)
+
+	// check if kyma resource exists
+	kyma := &v1beta1.Kyma{}
+	if err := r.Get(ctx, req.NamespacedName, kyma); err != nil {
+		// we'll ignore not-found errors, since they can't be fixed by an immediate
+		// requeue (we'll need to wait for a new notification), and we can get them
+		// on deleted requests.
+		logger.Info("Deleted successfully!")
+
+		return ctrl.Result{}, client.IgnoreNotFound(err) //nolint:wrapcheck
+	}
+
+	// check if deletionTimestamp is set, retry until it gets fully deleted
+	//if !kyma.DeletionTimestamp.IsZero() && kyma.Status.State != v1beta1.StateDeleting {
+	//		return r.deleteKyma(ctx, kyma)
+	//	}
+
+	return ctrl.Result{}, nil
 }
