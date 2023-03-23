@@ -521,6 +521,17 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			//In this block of code the actual finalizer dropping on the target cluster should happen.
 			fmt.Println("Deleting finalizers...")
 
+			//	Temporary means to iterate through all the resources
+			var resourcesList v1beta1.KymaList
+			err := r.Client.List(ctx, &resourcesList)
+			if err != nil {
+				for index, kymaResource := range resourcesList.Items {
+					fmt.Println(index, kymaResource)
+				}
+
+				return ctrl.Result{}, err
+			}
+
 			return ctrl.Result{}, nil
 		}
 
