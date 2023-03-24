@@ -27,6 +27,7 @@ import (
 
 	"github.com/kyma-project/lifecycle-manager/pkg/log"
 	"github.com/kyma-project/lifecycle-manager/pkg/metrics"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
 
 	"github.com/kyma-project/lifecycle-manager/api/v1beta1"
@@ -43,6 +44,7 @@ import (
 
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -533,6 +535,27 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 			for index, crdResource := range crdList.Items {
 				fmt.Println("CRD: ", index, crdResource)
+				//for every CRD
+				//1) Get the Kind, Group, Version of the type the CRD describes and create GVK
+				//2) Somehow use r.Client.List(...) to get all the objects of the GVK
+
+			}
+
+			uList := unstructured.UnstructuredList{}
+			gvk := schema.GroupVersionKind{
+				Group:   "apiextensions.k8s.io",
+				Version: "v1",
+				Kind:    "CustomResourceDefinition",
+			}
+			uList.SetGroupVersionKind(gvk)
+
+			err = r.Client.List(ctx, &uList)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+
+			for index, crdResource := range crdList.Items {
+				fmt.Println("Unstructured CRD: ", index, crdResource)
 			}
 
 			return ctrl.Result{}, nil
