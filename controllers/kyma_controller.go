@@ -41,6 +41,8 @@ import (
 	"github.com/kyma-project/lifecycle-manager/pkg/watcher"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -522,14 +524,15 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			fmt.Println("Deleting finalizers...")
 
 			//	Temporary means to iterate through all the resources
-			var resourcesList v1beta1.KymaList
-			err := r.Client.List(ctx, &resourcesList)
-			if err != nil {
-				for index, kymaResource := range resourcesList.Items {
-					fmt.Println(index, kymaResource)
-				}
+			var crdList = apiextensions.CustomResourceDefinitionList{}
 
+			err := r.Client.List(ctx, &crdList)
+			if err != nil {
 				return ctrl.Result{}, err
+			}
+
+			for index, crdResource := range crdList.Items {
+				fmt.Println("CRD: ", index, crdResource)
 			}
 
 			return ctrl.Result{}, nil
