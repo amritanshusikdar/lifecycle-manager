@@ -85,47 +85,22 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			}
 
 			for _, crdResource := range crdList.Items {
-				//	Since there are multiple possible versions, we are choosing the one that's in the etcd storage
-				var gvkVersion string
-				for _, version := range crdResource.Spec.Versions {
-					if version.Storage {
-						gvkVersion = version.Name
-						break
-					}
+				staleResources, err := getStaleResourcesFrom(ctx, r, crdResource)
+				if err != nil {
+					return ctrl.Result{}, nil
 				}
 
-				gvk := schema.GroupVersionKind{Group: crdResource.Spec.Group,
-					Kind:    crdResource.Spec.Names.Kind,
-					Version: gvkVersion,
+				pending, err := purgeStaleResources(ctx, r, staleResources)
+				if pending > 0 {
+					logger.Info(fmt.Sprintf("Still %d resources pending to purge", pending))
 				}
-
-				outdatedResources := unstructured.UnstructuredList{}
-				outdatedResources.SetGroupVersionKind(gvk)
-
-				if err := r.List(ctx, &outdatedResources); err != nil {
+				if err != nil {
 					return ctrl.Result{}, err
-				}
-
-				for _, resource := range outdatedResources.Items {
-					for _, finalizer := range resource.GetFinalizers() {
-						if removed := controllerutil.RemoveFinalizer(&resource, finalizer); !removed {
-							logger.V(log.WarnLevel).Info(fmt.Sprintf("Could not purge finalizer `%s` from resource `%s`",
-								finalizer, resource.GetName()))
-							return ctrl.Result{}, nil
-						} else {
-							logger.Info(fmt.Sprintln(fmt.Sprintf("Successfully purged finalizer `%s` from resource `%s`",
-								finalizer, resource.GetName())))
-						}
-					}
-					if err := r.Update(ctx, &resource); err != nil {
-						return ctrl.Result{}, err
-					}
 				}
 			}
 			/*
 				TODO:
-					uncomment the previously for testing purposes commented line
-					split each functionality into smaller helper functions
+					change time limit back to 5minutes
 			*/
 			return ctrl.Result{}, nil
 		}
@@ -137,4 +112,52 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// Helper functions
+func getStaleResourcesFrom(ctx context.Context, r *PurgeReconciler,
+	crd apiextensions.CustomResourceDefinition) (staleResources unstructured.UnstructuredList, err error) {
+	//	Since there are multiple possible versions, we are choosing the one that's in the etcd storage
+	var gvkVersion string
+	for _, version := range crd.Spec.Versions {
+		if version.Storage {
+			gvkVersion = version.Name
+			break
+		}
+	}
+
+	gvk := schema.GroupVersionKind{Group: crd.Spec.Group,
+		Kind:    crd.Spec.Names.Kind,
+		Version: gvkVersion,
+	}
+
+	staleResources.SetGroupVersionKind(gvk)
+
+	if err := r.List(ctx, &staleResources); err != nil {
+		return unstructured.UnstructuredList{}, err
+	}
+
+	return staleResources, nil
+}
+
+func purgeStaleResources(ctx context.Context, r *PurgeReconciler,
+	staleResources unstructured.UnstructuredList) (pending int, err error) {
+	logger := ctrlLog.FromContext(ctx)
+
+	for _, resource := range staleResources.Items {
+		for _, finalizer := range resource.GetFinalizers() {
+			if removed := controllerutil.RemoveFinalizer(&resource, finalizer); !removed {
+				logger.V(log.WarnLevel).Info(fmt.Sprintf("Could not purge finalizer `%s` from resource `%s`",
+					finalizer, resource.GetName()))
+				pending++
+			} else {
+				logger.Info(fmt.Sprintln(fmt.Sprintf("Successfully purged finalizer `%s` from resource `%s`",
+					finalizer, resource.GetName())))
+			}
+		}
+		if err := r.Update(ctx, &resource); err != nil {
+			return pending, err
+		}
+	}
+	return pending, nil
 }
