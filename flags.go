@@ -21,7 +21,7 @@ const (
 	defaultCacheSyncTimeout               = 2 * time.Minute
 	defaultListenerPort                   = 9080
 	defaultLogLevel                       = log.WarnLevel
-	defaultPurgeFinalizerTimeout          = 10 * time.Second //5 * time.Minute
+	defaultPurgeFinalizerTimeout          = 5 * time.Minute
 )
 
 //nolint:funlen

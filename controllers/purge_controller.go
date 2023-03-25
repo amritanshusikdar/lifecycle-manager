@@ -98,10 +98,6 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 					return ctrl.Result{}, err
 				}
 			}
-			/*
-				TODO:
-					change time limit back to 5minutes
-			*/
 			return ctrl.Result{}, nil
 		}
 
