@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"strings"
 	"time"
 
@@ -337,8 +338,7 @@ func (r *KymaReconciler) handleDeletingState(ctx context.Context, kyma *v1beta1.
 		logger.Info("removed remote finalizer")
 	}
 
-	//TODO: Uncomment after the testing is done!
-	//controllerutil.RemoveFinalizer(kyma, v1beta1.Finalizer)
+	controllerutil.RemoveFinalizer(kyma, v1beta1.Finalizer)
 
 	if err := r.Update(ctx, kyma); err != nil {
 		err := fmt.Errorf("error while trying to udpate kyma during deletion: %w", err)
