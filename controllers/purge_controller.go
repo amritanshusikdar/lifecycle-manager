@@ -57,7 +57,6 @@ type PurgeReconciler struct {
 func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := ctrlLog.FromContext(ctx)
 	logger.V(log.InfoLevel).Info("reconciling")
-	fmt.Println("Purge Reconciler loop runs")
 
 	ctx = adapter.ContextWithRecorder(ctx, r.EventRecorder)
 
@@ -69,40 +68,24 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// on deleted requests.
 		logger.Info("Deleted successfully!")
 
-		return ctrl.Result{}, client.IgnoreNotFound(err) //nolint:wrapcheck
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// check if deletionTimestamp is set, retry until it gets fully deleted
+	// condition to check if deletionTimestamp is set, retry until it gets fully deleted
 	if !kyma.DeletionTimestamp.IsZero() && kyma.Status.State == v1beta1.StateDeleting {
+		deletionDeadline := kyma.DeletionTimestamp.Add(r.PurgeFinalizerTimeout)
 
-		//Check if enough time has passed
-
-		//About the times:
-		//1) DeletionTimestamp - set by K8s
-		//2) Then after some time our controller is notified
-		//3) Then after some time our controller changes the Kyma status to "Deleting"
-		// If time difference between 1 and 3 is about 1 second or less, we may use "DeletionTimestamp" directly.
-		// If it's longer then maybe we should base our logic on the time when 3) happened.
-
-		timeRequired := kyma.DeletionTimestamp.Add(r.PurgeFinalizerTimeout)
-
-		fmt.Println("r.PurgeFinalizerTimeout", r.PurgeFinalizerTimeout)
-		fmt.Println("timeRequired", timeRequired)
-		fmt.Println("time.Now()", time.Now())
-
-		if time.Now().After(timeRequired) {
-			//In this block of code the actual finalizer dropping on the target cluster should happen.
+		if time.Now().After(deletionDeadline) {
 			fmt.Println("Deleting finalizers...")
 
-			//	Temporary means to iterate through all the resources
 			var crdList = apiextensions.CustomResourceDefinitionList{}
 
-			err := r.Client.List(ctx, &crdList)
-			if err != nil {
+			if err := r.Client.List(ctx, &crdList); err != nil {
 				return ctrl.Result{}, err
 			}
 
 			for _, crdResource := range crdList.Items {
+				//	Since there are multiple possible versions, we are choosing the one that's in the etcd storage
 				var gvkVersion string
 				for _, version := range crdResource.Spec.Versions {
 					if version.Storage {
@@ -111,39 +94,37 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 					}
 				}
 
-				//for every CRD
-				//1) Get the Kind, Group, Version of the type the CRD describes and create GVK
 				gvk := schema.GroupVersionKind{Group: crdResource.Spec.Group,
 					Kind:    crdResource.Spec.Names.Kind,
 					Version: gvkVersion,
 				}
-				fmt.Println("GVK: ", gvk)
-				//2) Somehow use r.Client.List(...) to get all the objects of the GVK
-				unstructuredList := unstructured.UnstructuredList{}
-				unstructuredList.SetGroupVersionKind(gvk)
 
-				err = r.List(ctx, &unstructuredList)
-				if err != nil {
+				outdatedResources := unstructured.UnstructuredList{}
+				outdatedResources.SetGroupVersionKind(gvk)
+
+				if err := r.List(ctx, &outdatedResources); err != nil {
 					return ctrl.Result{}, err
 				}
 
-				for innerIndex, resource := range unstructuredList.Items {
-					fmt.Println("\t", innerIndex, ": ", resource.GetName(), resource.GetNamespace())
+				for _, resource := range outdatedResources.Items {
 					for _, finalizer := range resource.GetFinalizers() {
-						done := controllerutil.RemoveFinalizer(&resource, finalizer)
-						fmt.Println("FINALIZER REMOVED? --> ", done)
-						if err := r.Update(ctx, &resource); err != nil {
-							return ctrl.Result{}, err
+						if removed := controllerutil.RemoveFinalizer(&resource, finalizer); !removed {
+							logger.V(log.WarnLevel).Info(fmt.Sprintf("Could not purge finalizer `%s` from resource `%s`",
+								finalizer, resource.GetName()))
+							return ctrl.Result{}, nil
+						} else {
+							logger.Info(fmt.Sprintln(fmt.Sprintf("Successfully purged finalizer `%s` from resource `%s`",
+								finalizer, resource.GetName())))
 						}
+					}
+					if err := r.Update(ctx, &resource); err != nil {
+						return ctrl.Result{}, err
 					}
 				}
 			}
 			/*
 				TODO:
-					cleanup the codebase
-					do proper error handling
 					uncomment the previously for testing purposes commented line
-					shift to different file
 					split each functionality into smaller helper functions
 			*/
 			return ctrl.Result{}, nil
