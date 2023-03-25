@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"strings"
 	"time"
 
@@ -27,7 +29,6 @@ import (
 
 	"github.com/kyma-project/lifecycle-manager/pkg/log"
 	"github.com/kyma-project/lifecycle-manager/pkg/metrics"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
 
 	"github.com/kyma-project/lifecycle-manager/api/v1beta1"
@@ -533,31 +534,50 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				return ctrl.Result{}, err
 			}
 
-			for index, crdResource := range crdList.Items {
-				fmt.Println("CRD: ", index, crdResource)
+			for _, crdResource := range crdList.Items {
+				var gvkVersion string
+				for _, version := range crdResource.Spec.Versions {
+					if version.Storage {
+						gvkVersion = version.Name
+						break
+					}
+				}
+
 				//for every CRD
 				//1) Get the Kind, Group, Version of the type the CRD describes and create GVK
+				gvk := schema.GroupVersionKind{Group: crdResource.Spec.Group,
+					Kind:    crdResource.Spec.Names.Kind,
+					Version: gvkVersion,
+				}
+				fmt.Println("GVK: ", gvk)
 				//2) Somehow use r.Client.List(...) to get all the objects of the GVK
+				unstructuredList := unstructured.UnstructuredList{}
+				unstructuredList.SetGroupVersionKind(gvk)
 
+				err = r.List(ctx, &unstructuredList)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+
+				for innerIndex, resource := range unstructuredList.Items {
+					fmt.Println("\t", innerIndex, ": ", resource.GetName(), resource.GetNamespace())
+					for _, finalizer := range resource.GetFinalizers() {
+						done := controllerutil.RemoveFinalizer(&resource, finalizer)
+						fmt.Println("FINALIZER REMOVED? --> ", done)
+						if err := r.Update(ctx, &resource); err != nil {
+							return ctrl.Result{}, err
+						}
+					}
+				}
 			}
-
-			uList := unstructured.UnstructuredList{}
-			gvk := schema.GroupVersionKind{
-				Group:   "apiextensions.k8s.io",
-				Version: "v1",
-				Kind:    "CustomResourceDefinition",
-			}
-			uList.SetGroupVersionKind(gvk)
-
-			err = r.Client.List(ctx, &uList)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-
-			for index, crdResource := range crdList.Items {
-				fmt.Println("Unstructured CRD: ", index, crdResource)
-			}
-
+			/*
+				TODO:
+					cleanup the codebase
+					do proper error handling
+					uncomment the previously for testing purposes commented line
+					shift to different file
+					split each functionality into smaller helper functions
+			*/
 			return ctrl.Result{}, nil
 		}
 
