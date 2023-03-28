@@ -54,10 +54,10 @@ import (
 const UseRandomPort = "0"
 
 var (
+	purgeReconciler    *controllers.PurgeReconciler //nolint:gochecknoglobals
 	controlPlaneClient client.Client                //nolint:gochecknoglobals
 	k8sManager         manager.Manager              //nolint:gochecknoglobals
-	purgeReconciler    *controllers.PurgeReconciler //nolint:gochecknoglobals
-	singleCluster      *envtest.Environment         //nolint:gochecknoglobals
+	singleClusterEnv   *envtest.Environment         //nolint:gochecknoglobals
 	ctx                context.Context              //nolint:gochecknoglobals
 	cancel             context.CancelFunc           //nolint:gochecknoglobals
 	cfg                *rest.Config                 //nolint:gochecknoglobals
@@ -80,13 +80,13 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	singleCluster = &envtest.Environment{
+	singleClusterEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		CRDs:                  append([]*v1.CustomResourceDefinition{}, remoteCrds...),
 		ErrorIfCRDPathMissing: true,
 	}
 
-	cfg, err = singleCluster.Start()
+	cfg, err = singleClusterEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
@@ -108,7 +108,6 @@ var _ = BeforeSuite(func() {
 	}
 
 	remoteClientCache := remote.NewClientCache()
-
 	purgeReconciler = &controllers.PurgeReconciler{
 		Client:           k8sManager.GetClient(),
 		EventRecorder:    k8sManager.GetEventRecorderFor(operatorv1beta1.OperatorName),
@@ -116,12 +115,12 @@ var _ = BeforeSuite(func() {
 		VerificationSettings: signature.VerificationSettings{
 			EnableVerification: false,
 		},
-		KcpRestConfig:         k8sManager.GetConfig(),
 		RemoteClientCache:     remoteClientCache,
+		KcpRestConfig:         k8sManager.GetConfig(),
 		PurgeFinalizerTimeout: 1 * time.Second, //TODO: As short as possible?
 	}
 
-	err = (purgeReconciler).SetupWithManager(k8sManager, controller.Options{},
+	err = purgeReconciler.SetupWithManager(k8sManager, controller.Options{},
 		controllers.SetupUpSetting{ListenerAddr: UseRandomPort})
 	Expect(err).ToNot(HaveOccurred())
 
@@ -138,6 +137,6 @@ var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 	cancel()
 
-	err := singleCluster.Stop()
+	err := singleClusterEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
