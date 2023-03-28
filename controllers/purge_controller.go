@@ -19,11 +19,13 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"time"
 
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
 	"github.com/kyma-project/lifecycle-manager/pkg/log"
+	"github.com/kyma-project/lifecycle-manager/pkg/status"
 	"k8s.io/client-go/rest"
 
 	"github.com/kyma-project/lifecycle-manager/api/v1beta1"
@@ -72,6 +74,8 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	// condition to check if deletionTimestamp is set, retry until it gets fully deleted
+	fmt.Println("kyma.DeletionTimestamp.IsZero()", kyma.DeletionTimestamp.IsZero())
+	fmt.Println("kyma.Status.State", kyma.Status.State)
 	if !kyma.DeletionTimestamp.IsZero() && kyma.Status.State == v1beta1.StateDeleting {
 		deletionDeadline := kyma.DeletionTimestamp.Add(r.PurgeFinalizerTimeout)
 
@@ -110,7 +114,22 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{}, nil
 }
 
+func (r *PurgeReconciler) UpdateStatus(
+	ctx context.Context, kyma *v1beta1.Kyma, state v1beta1.State, message string,
+) error {
+	if err := status.Helper(r).UpdateStatusForExistingModules(ctx, kyma, state, message); err != nil {
+		return fmt.Errorf("error while updating status to %s because of %s: %w", state, message, err)
+	}
+	return nil
+}
+
+// RecordKymaStatusMetrics updates prometheus metrics defined to track changes to the Kyma status.
+func (r *PurgeReconciler) RecordKymaStatusMetrics(ctx context.Context, kyma *v1beta1.Kyma) {
+	//do nothing
+}
+
 // Helper functions
+
 func getStaleResourcesFrom(ctx context.Context, r *PurgeReconciler,
 	crd apiextensions.CustomResourceDefinition) (staleResources unstructured.UnstructuredList, err error) {
 	//	Since there are multiple possible versions, we are choosing the one that's in the etcd storage

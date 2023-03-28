@@ -54,12 +54,13 @@ import (
 const UseRandomPort = "0"
 
 var (
-	controlPlaneClient client.Client        //nolint:gochecknoglobals
-	k8sManager         manager.Manager      //nolint:gochecknoglobals
-	singleCluster      *envtest.Environment //nolint:gochecknoglobals
-	ctx                context.Context      //nolint:gochecknoglobals
-	cancel             context.CancelFunc   //nolint:gochecknoglobals
-	cfg                *rest.Config         //nolint:gochecknoglobals
+	controlPlaneClient client.Client                //nolint:gochecknoglobals
+	k8sManager         manager.Manager              //nolint:gochecknoglobals
+	purgeReconciler    *controllers.PurgeReconciler //nolint:gochecknoglobals
+	singleCluster      *envtest.Environment         //nolint:gochecknoglobals
+	ctx                context.Context              //nolint:gochecknoglobals
+	cancel             context.CancelFunc           //nolint:gochecknoglobals
+	cfg                *rest.Config                 //nolint:gochecknoglobals
 )
 
 func TestAPIs(t *testing.T) {
@@ -108,7 +109,7 @@ var _ = BeforeSuite(func() {
 
 	remoteClientCache := remote.NewClientCache()
 
-	err = (&controllers.PurgeReconciler{
+	purgeReconciler = &controllers.PurgeReconciler{
 		Client:           k8sManager.GetClient(),
 		EventRecorder:    k8sManager.GetEventRecorderFor(operatorv1beta1.OperatorName),
 		RequeueIntervals: intervals,
@@ -118,7 +119,9 @@ var _ = BeforeSuite(func() {
 		KcpRestConfig:         k8sManager.GetConfig(),
 		RemoteClientCache:     remoteClientCache,
 		PurgeFinalizerTimeout: 1 * time.Second, //TODO: As short as possible?
-	}).SetupWithManager(k8sManager, controller.Options{},
+	}
+
+	err = (purgeReconciler).SetupWithManager(k8sManager, controller.Options{},
 		controllers.SetupUpSetting{ListenerAddr: UseRandomPort})
 	Expect(err).ToNot(HaveOccurred())
 
