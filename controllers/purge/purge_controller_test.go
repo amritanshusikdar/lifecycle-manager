@@ -21,7 +21,7 @@ var _ = Describe("When kyma is not deleted within configured timeout", Ordered, 
 	kyma := NewTestKyma("no-module-kyma")
 
 	It("The purge logic should start after the timeout", func() {
-		var certRequest *unstructured.Unstructured
+		var issuerCR *unstructured.Unstructured
 
 		By("Create the Kyma object", func() {
 			Expect(controlPlaneClient.Create(ctx, kyma)).Should(Succeed())
@@ -33,9 +33,9 @@ var _ = Describe("When kyma is not deleted within configured timeout", Ordered, 
 		})
 
 		By("Create some CR with finalizer(s)", func() {
-			certRequest = createIssuerFor(kyma)
-			Expect(controlPlaneClient.Create(ctx, certRequest)).Should(Succeed())
-			Expect(getObjFinalizers(ctx, client.ObjectKeyFromObject(certRequest), controlPlaneClient)).Should(ContainElement(testFinalizer))
+			issuerCR = createIssuerFor(kyma)
+			Expect(controlPlaneClient.Create(ctx, issuerCR)).Should(Succeed())
+			Expect(getObjFinalizers(ctx, client.ObjectKeyFromObject(issuerCR), controlPlaneClient)).Should(ContainElement(testFinalizer))
 		})
 
 		By("Kyma is deleted", func() {
@@ -55,7 +55,7 @@ var _ = Describe("When kyma is not deleted within configured timeout", Ordered, 
 		By("Target finalizers should be dropped", func() {
 			Eventually(IsKymaInState(ctx, controlPlaneClient, kyma.GetName(), v1beta1.StateDeleting),
 				Timeout, Interval).Should(BeTrue())
-			Eventually(getObjFinalizers(ctx, client.ObjectKeyFromObject(certRequest), controlPlaneClient), Timeout, Interval).Should(BeEmpty())
+			Eventually(getObjFinalizers(ctx, client.ObjectKeyFromObject(issuerCR), controlPlaneClient), Timeout, Interval).Should(BeEmpty())
 		})
 
 	})
