@@ -44,18 +44,18 @@ var _ = Describe("When kyma is not deleted within configured timeout", Ordered, 
 			Expect(err).ToNot(HaveOccurred())
 
 			//Simulate main control loop action
-			err = controlPlaneClient.Get(ctx, client.ObjectKeyFromObject(kyma), kyma)
-			Expect(err).ToNot(HaveOccurred())
-
-			err = purgeReconciler.UpdateStatus(ctx, kyma, v1beta1.StateDeleting, "TODO: Debugging")
-			Expect(err).ToNot(HaveOccurred())
+			Eventually(updateKymaStatus(ctx, controlPlaneClient, purgeReconciler.UpdateStatus, client.ObjectKeyFromObject(kyma), v1beta1.StateDeleting), Timeout, Interval).
+				Should(BeTrue())
 
 		})
 
 		By("Target finalizers should be dropped", func() {
 			Eventually(IsKymaInState(ctx, controlPlaneClient, kyma.GetName(), v1beta1.StateDeleting),
 				Timeout, Interval).Should(BeTrue())
-			Eventually(getObjFinalizers(ctx, client.ObjectKeyFromObject(issuerCR), controlPlaneClient), 3*Timeout, Interval).Should(BeEmpty())
+			Eventually(getObjFinalizers, 3*Timeout, Interval).
+				WithContext(ctx).
+				WithArguments(client.ObjectKeyFromObject(issuerCR), controlPlaneClient).
+				Should(BeEmpty())
 		})
 
 	})
@@ -96,4 +96,18 @@ func getObjFinalizers(ctx context.Context, key client.ObjectKey, cl client.Clien
 	res := createIssuerObj()
 	Expect(cl.Get(ctx, key, res)).Should(Succeed())
 	return res.GetFinalizers()
+}
+
+func updateKymaStatus(ctx context.Context, cl client.Client, updateStatus func(context.Context, *v1beta1.Kyma, v1beta1.State, string) error, key client.ObjectKey, state v1beta1.State) func() bool {
+	return func() bool {
+		kyma := v1beta1.Kyma{}
+
+		err := cl.Get(ctx, key, &kyma)
+		Expect(err).ToNot(HaveOccurred())
+
+		err = updateStatus(ctx, &kyma, v1beta1.StateDeleting, "TODO: Debugging")
+		Expect(err).ToNot(HaveOccurred())
+
+		return true
+	}
 }
