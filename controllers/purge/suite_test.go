@@ -117,7 +117,7 @@ var _ = BeforeSuite(func() {
 		},
 		RemoteClientCache:     remoteClientCache,
 		KcpRestConfig:         k8sManager.GetConfig(),
-		PurgeFinalizerTimeout: 1 * time.Second, //TODO: As short as possible?
+		PurgeFinalizerTimeout: 5 * time.Second, //TODO: As short as possible?
 	}
 
 	err = purgeReconciler.SetupWithManager(k8sManager, controller.Options{},

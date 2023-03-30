@@ -38,7 +38,7 @@ var _ = Describe("When kyma is not deleted within configured timeout", Ordered, 
 			Expect(getObjFinalizers(ctx, client.ObjectKeyFromObject(issuerCR), controlPlaneClient)).Should(ContainElement(testFinalizer))
 		})
 
-		By("Kyma is deleted", func() {
+		By("Kyma deletion is triggered", func() {
 			//Kyma delete event
 			err := controlPlaneClient.Delete(ctx, kyma)
 			Expect(err).ToNot(HaveOccurred())
@@ -55,11 +55,18 @@ var _ = Describe("When kyma is not deleted within configured timeout", Ordered, 
 		By("Target finalizers should be dropped", func() {
 			Eventually(IsKymaInState(ctx, controlPlaneClient, kyma.GetName(), v1beta1.StateDeleting),
 				Timeout, Interval).Should(BeTrue())
-			Eventually(getObjFinalizers(ctx, client.ObjectKeyFromObject(issuerCR), controlPlaneClient), Timeout, Interval).Should(BeEmpty())
+			Eventually(getObjFinalizers(ctx, client.ObjectKeyFromObject(issuerCR), controlPlaneClient), 3*Timeout, Interval).Should(BeEmpty())
 		})
 
 	})
 })
+
+/*
+var _ = Describe("When kyma is deleted before configured timeout", Ordered, func() {
+		By("Target finalizers should be dropped as soon as possible", func() {
+		})
+})
+*/
 
 func createIssuerObj() *unstructured.Unstructured {
 	gvk := schema.GroupVersionKind{
