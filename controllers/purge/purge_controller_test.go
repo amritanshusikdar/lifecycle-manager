@@ -45,7 +45,7 @@ var _ = Describe("When kyma is not deleted within configured timeout", Ordered, 
 
 			//Simulate main control loop action
 			Eventually(updateKymaStatus(ctx, controlPlaneClient, purgeReconciler.UpdateStatus, client.ObjectKeyFromObject(kyma), v1beta1.StateDeleting), Timeout, Interval).
-				Should(BeTrue())
+				Should(Succeed())
 
 		})
 
@@ -98,16 +98,20 @@ func getObjFinalizers(ctx context.Context, key client.ObjectKey, cl client.Clien
 	return res.GetFinalizers()
 }
 
-func updateKymaStatus(ctx context.Context, cl client.Client, updateStatus func(context.Context, *v1beta1.Kyma, v1beta1.State, string) error, key client.ObjectKey, state v1beta1.State) func() bool {
-	return func() bool {
+func updateKymaStatus(ctx context.Context, cl client.Client, updateStatus func(context.Context, *v1beta1.Kyma, v1beta1.State, string) error, key client.ObjectKey, state v1beta1.State) func() error {
+	return func() error {
 		kyma := v1beta1.Kyma{}
 
 		err := cl.Get(ctx, key, &kyma)
-		Expect(err).ToNot(HaveOccurred())
+		if err != nil {
+			return err
+		}
 
 		err = updateStatus(ctx, &kyma, v1beta1.StateDeleting, "TODO: Debugging")
-		Expect(err).ToNot(HaveOccurred())
+		if err != nil {
+			return err
+		}
 
-		return true
+		return nil
 	}
 }
