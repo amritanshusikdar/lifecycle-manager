@@ -27,7 +27,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	//nolint:gci
-	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiExtensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -75,27 +75,27 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 
-	remoteCrds, err := ParseRemoteCRDs([]string{
-		"https://github.com/cert-manager/cert-manager/releases/download/v1.10.1/cert-manager.crds.yaml",
-	})
-	Expect(err).NotTo(HaveOccurred())
+	externalCRDs := AppendExternalCRDs(
+		filepath.Join("..", "..", "config", "samples", "tests", "crds"),
+		"cert-manager-v1.10.1.crds.yaml",
+		"istio-v1.17.1.crds.yaml")
 
 	singleClusterEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
-		CRDs:                  append([]*v1.CustomResourceDefinition{}, remoteCrds...),
+		CRDs:                  append([]*apiExtensionsv1.CustomResourceDefinition{}, externalCRDs...),
 		ErrorIfCRDPathMissing: true,
 	}
 
-	cfg, err = singleClusterEnv.Start()
+	cfg, err := singleClusterEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
 	Expect(api.AddToScheme(scheme.Scheme)).NotTo(HaveOccurred())
-	Expect(v1.AddToScheme(scheme.Scheme)).NotTo(HaveOccurred())
+	Expect(apiExtensionsv1.AddToScheme(scheme.Scheme)).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
 
-	k8sManager, err = ctrl.NewManager(
+	k8sManager, err := ctrl.NewManager(
 		cfg, ctrl.Options{
 			MetricsBindAddress: UseRandomPort,
 			Scheme:             scheme.Scheme,
