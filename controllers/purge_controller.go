@@ -69,8 +69,12 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// we'll ignore not-found errors, since they can't be fixed by an immediate
 		// requeue (we'll need to wait for a new notification), and we can get them
 		// on deleted requests.
-		performCleanup(ctx, r, logger)
-		logger.Info("Deleted successfully!")
+		if done, msg := performCleanup(ctx, r, logger); done {
+			logger.Info(fmt.Sprintf("%s", msg))
+		} else {
+			logger.Info("Purging was not successful!")
+			logger.Info(fmt.Sprintf("%s", msg))
+		}
 
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -84,7 +88,12 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		if time.Now().After(deletionDeadline) {
 			fmt.Println("Deleting finalizers...")
 
-			performCleanup(ctx, r, logger)
+			if done, msg := performCleanup(ctx, r, logger); done {
+				logger.Info(fmt.Sprintf("%s", msg))
+			} else {
+				logger.Info("Purging was not successful!")
+				logger.Info(fmt.Sprintf("%s", msg))
+			}
 
 			return ctrl.Result{}, nil
 		}
