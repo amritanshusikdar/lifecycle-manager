@@ -63,6 +63,7 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	ctx = adapter.ContextWithRecorder(ctx, r.EventRecorder)
 
+	fmt.Println("FIRST IF CONDITION")
 	// check if kyma resource exists
 	kyma := &v1beta1.Kyma{}
 	if err := r.Get(ctx, req.NamespacedName, kyma); err != nil {
@@ -70,7 +71,7 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// requeue (we'll need to wait for a new notification), and we can get them
 		// on deleted requests.
 
-		fmt.Println("INSIDE::-> KYMA NOT FOUND BLOCK")
+		fmt.Println("INSIDE::-> 1")
 
 		if done, msg := performCleanup(ctx, r, logger); done {
 			logger.Info(fmt.Sprintf("%s", msg))
@@ -79,17 +80,29 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			logger.Info(fmt.Sprintf("%s", msg))
 		}
 
+		fmt.Println("RETURN::-> 1")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	} else {
+		fmt.Println("-------------------------")
+		fmt.Println(kyma)
+		fmt.Println(kyma.Status.State)
+		fmt.Println("-------------------------")
 	}
+
+	fmt.Println("SECOND IF CONDITION")
 
 	// condition to check if deletionTimestamp is set, retry until it gets fully deleted
 	fmt.Println("kyma.DeletionTimestamp.IsZero()", kyma.DeletionTimestamp.IsZero())
 	fmt.Println("kyma.Status.State", kyma.Status.State)
-	if !kyma.DeletionTimestamp.IsZero() && kyma.Status.State == v1beta1.StateDeleting {
+	if !kyma.DeletionTimestamp.IsZero() || kyma.Status.State == v1beta1.StateDeleting {
 		deletionDeadline := kyma.DeletionTimestamp.Add(r.PurgeFinalizerTimeout)
+
+		fmt.Println("INSIDE::-> 2")
 
 		if time.Now().After(deletionDeadline) {
 			fmt.Println("Deleting finalizers...")
+
+			fmt.Println("INSIDE::-> 3")
 
 			if done, msg := performCleanup(ctx, r, logger); done {
 				logger.Info(fmt.Sprintf("%s", msg))
@@ -98,15 +111,17 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				logger.Info(fmt.Sprintf("%s", msg))
 			}
 
+			fmt.Println("RETURN::-> 3")
 			return ctrl.Result{}, nil
 		}
 
+		fmt.Println("RETURN::-> 2")
 		return ctrl.Result{
-			Requeue:      true,
 			RequeueAfter: 1 * time.Second,
 		}, nil
 	}
 
+	fmt.Println("RETURN DEFAULT")
 	return ctrl.Result{}, nil
 }
 

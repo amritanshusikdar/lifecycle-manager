@@ -89,7 +89,7 @@ var _ = Describe("When kyma is deleted before configured timeout", Ordered, func
 		})
 
 		By("Target finalizers should be dropped immediately", func() {
-			Eventually(getObjFinalizers, 10*time.Second, Interval).
+			Eventually(getObjFinalizers, 5*time.Second, Interval).
 				WithContext(ctx).
 				WithArguments(client.ObjectKeyFromObject(issuerCR), controlPlaneClient).
 				Should(BeEmpty())
