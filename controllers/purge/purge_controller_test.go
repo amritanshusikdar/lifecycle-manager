@@ -145,14 +145,3 @@ func updateKymaStatus(ctx context.Context, cl client.Client, updateStatus func(c
 		return nil
 	}
 }
-
-/*
-	1. [DONE] Rebase the main branch into current branch
-	2. [DONE] Apply the new means to fetch the CRDs locally rather than via the internet
-	3. [DONE] Perform the optimizations on the main purge reconciler loop
-- https://github.com/kyma-project/lifecycle-manager/issues/470
-
-	4. [DONE] Add the new test case scenario
-	5. Check if all the tests are passing and good to go
-	6. Add another client in the testing (minor change)
-*/

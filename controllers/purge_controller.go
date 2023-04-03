@@ -59,19 +59,16 @@ type PurgeReconciler struct {
 // move the current state of the cluster closer to the desired state.
 func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := ctrlLog.FromContext(ctx)
-	logger.V(log.InfoLevel).Info("reconciling")
+	logger.V(log.InfoLevel).Info("Purge Reconciliation started")
 
 	ctx = adapter.ContextWithRecorder(ctx, r.EventRecorder)
 
-	fmt.Println("FIRST IF CONDITION")
 	// check if kyma resource exists
 	kyma := &v1beta1.Kyma{}
 	if err := r.Get(ctx, req.NamespacedName, kyma); err != nil {
 		// we'll ignore not-found errors, since they can't be fixed by an immediate
 		// requeue (we'll need to wait for a new notification), and we can get them
 		// on deleted requests.
-
-		fmt.Println("INSIDE::-> 1")
 
 		if done, msg := performCleanup(ctx, r, logger); done {
 			logger.Info(fmt.Sprintf("%s", msg))
@@ -80,16 +77,8 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			logger.Info(fmt.Sprintf("%s", msg))
 		}
 
-		fmt.Println("RETURN::-> 1")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
-	} else {
-		fmt.Println("-------------------------")
-		fmt.Println(kyma)
-		fmt.Println(kyma.Status.State)
-		fmt.Println("-------------------------")
 	}
-
-	fmt.Println("SECOND IF CONDITION")
 
 	// condition to check if deletionTimestamp is set, retry until it gets fully deleted
 	fmt.Println("kyma.DeletionTimestamp.IsZero()", kyma.DeletionTimestamp.IsZero())
@@ -97,12 +86,8 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if !kyma.DeletionTimestamp.IsZero() || kyma.Status.State == v1beta1.StateDeleting {
 		deletionDeadline := kyma.DeletionTimestamp.Add(r.PurgeFinalizerTimeout)
 
-		fmt.Println("INSIDE::-> 2")
-
 		if time.Now().After(deletionDeadline) {
 			fmt.Println("Deleting finalizers...")
-
-			fmt.Println("INSIDE::-> 3")
 
 			if done, msg := performCleanup(ctx, r, logger); done {
 				logger.Info(fmt.Sprintf("%s", msg))
@@ -110,18 +95,14 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				logger.Info("Purging was not successful!")
 				logger.Info(fmt.Sprintf("%s", msg))
 			}
-
-			fmt.Println("RETURN::-> 3")
 			return ctrl.Result{}, nil
 		}
 
-		fmt.Println("RETURN::-> 2")
 		return ctrl.Result{
 			RequeueAfter: 1 * time.Second,
 		}, nil
 	}
 
-	fmt.Println("RETURN DEFAULT")
 	return ctrl.Result{}, nil
 }
 
