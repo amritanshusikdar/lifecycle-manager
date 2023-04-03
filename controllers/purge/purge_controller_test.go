@@ -2,6 +2,7 @@ package purge_test
 
 import (
 	"context"
+	"time"
 
 	"github.com/kyma-project/lifecycle-manager/api/v1beta1"
 	. "github.com/kyma-project/lifecycle-manager/pkg/testutils"
@@ -61,12 +62,41 @@ var _ = Describe("When kyma is not deleted within configured timeout", Ordered, 
 	})
 })
 
-/*
 var _ = Describe("When kyma is deleted before configured timeout", Ordered, func() {
-		By("Target finalizers should be dropped as soon as possible", func() {
+	kyma := NewTestKyma("drop-intantly-kyma")
+
+	It("Should start purging right after the kyma is deleted", func() {
+		var issuerCR *unstructured.Unstructured
+
+		By("Creating the kyma object first", func() {
+			Expect(controlPlaneClient.Create(ctx, kyma)).Should(Succeed())
+			if updateRequired := kyma.CheckLabelsAndFinalizers(); updateRequired {
+				err := controlPlaneClient.Update(ctx, kyma)
+				Expect(err).ToNot(HaveOccurred())
+			}
 		})
+
+		By("Create some CR with finalizer(s)", func() {
+			issuerCR = createIssuerFor(kyma)
+			Expect(controlPlaneClient.Create(ctx, issuerCR)).Should(Succeed())
+			Expect(getObjFinalizers(ctx, client.ObjectKeyFromObject(issuerCR), controlPlaneClient)).Should(ContainElement(testFinalizer))
+		})
+
+		By("Triggering kyma deletion and is completely removed", func() {
+			//	Kyma delete event
+			err := controlPlaneClient.Delete(ctx, kyma)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		By("Target finalizers should be dropped immediately", func() {
+			Eventually(getObjFinalizers, 10*time.Second, Interval).
+				WithContext(ctx).
+				WithArguments(client.ObjectKeyFromObject(issuerCR), controlPlaneClient).
+				Should(BeEmpty())
+		})
+
+	})
 })
-*/
 
 func createIssuerObj() *unstructured.Unstructured {
 	gvk := schema.GroupVersionKind{
@@ -115,3 +145,14 @@ func updateKymaStatus(ctx context.Context, cl client.Client, updateStatus func(c
 		return nil
 	}
 }
+
+/*
+	1. [DONE] Rebase the main branch into current branch
+	2. [DONE] Apply the new means to fetch the CRDs locally rather than via the internet
+	3. [DONE] Perform the optimizations on the main purge reconciler loop
+- https://github.com/kyma-project/lifecycle-manager/issues/470
+
+	4. [DONE] Add the new test case scenario
+	5. Check if all the tests are passing and good to go
+	6. Add another client in the testing (minor change)
+*/
