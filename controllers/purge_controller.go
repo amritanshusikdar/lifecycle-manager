@@ -20,13 +20,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
+	"github.com/kyma-project/lifecycle-manager/pkg/status"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/kyma-project/lifecycle-manager/pkg/log"
-	"github.com/kyma-project/lifecycle-manager/pkg/status"
 	"k8s.io/client-go/rest"
 
 	"github.com/kyma-project/lifecycle-manager/api/v1beta1"
@@ -106,20 +106,6 @@ func (r *PurgeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{}, nil
 }
 
-func (r *PurgeReconciler) UpdateStatus(
-	ctx context.Context, kyma *v1beta1.Kyma, state v1beta1.State, message string,
-) error {
-	if err := status.Helper(r).UpdateStatusForExistingModules(ctx, kyma, state, message); err != nil {
-		return fmt.Errorf("error while updating status to %s because of %s: %w", state, message, err)
-	}
-	return nil
-}
-
-// RecordKymaStatusMetrics updates prometheus metrics defined to track changes to the Kyma status.
-func (r *PurgeReconciler) RecordKymaStatusMetrics(ctx context.Context, kyma *v1beta1.Kyma) {
-	//do nothing
-}
-
 // Helper functions
 func performCleanup(ctx context.Context, r *PurgeReconciler, logger logr.Logger) (done bool, msg interface{}) {
 	var crdList = apiextensions.CustomResourceDefinitionList{}
@@ -129,6 +115,10 @@ func performCleanup(ctx context.Context, r *PurgeReconciler, logger logr.Logger)
 	}
 
 	for _, crdResource := range crdList.Items {
+		//	Skipping Kyma Custom Resource deletion as it should be handled by the main reconciler loop
+		if crdResource.Spec.Group == "operator.kyma-project.io" && crdResource.Spec.Names.Kind == "Kyma" {
+			continue
+		}
 		staleResources, err := getStaleResourcesFrom(ctx, r, crdResource)
 		if err != nil {
 			return false, err
@@ -190,4 +180,18 @@ func purgeStaleResources(ctx context.Context, r *PurgeReconciler,
 		}
 	}
 	return pending, nil
+}
+
+func (r *PurgeReconciler) UpdateStatus(
+	ctx context.Context, kyma *v1beta1.Kyma, state v1beta1.State, message string,
+) error {
+	if err := status.Helper(r).UpdateStatusForExistingModules(ctx, kyma, state, message); err != nil {
+		return fmt.Errorf("error while updating status to %s because of %s: %w", state, message, err)
+	}
+	return nil
+}
+
+// RecordKymaStatusMetrics updates prometheus metrics defined to track changes to the Kyma status.
+func (r *PurgeReconciler) RecordKymaStatusMetrics(ctx context.Context, kyma *v1beta1.Kyma) {
+	//do nothing
 }
