@@ -1,0 +1,155 @@
+package purge_test
+
+import (
+	"context"
+	"time"
+
+	"github.com/kyma-project/lifecycle-manager/api/v1beta1"
+	. "github.com/kyma-project/lifecycle-manager/pkg/testutils"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
+
+const (
+	testFinalizer = "purge.reconciler/test"
+)
+
+var _ = Describe("When kyma is not deleted within configured timeout", Ordered, func() {
+	kyma := NewTestKyma("no-module-kyma")
+
+	It("The purge logic should start after the timeout", func() {
+		var issuerCR *unstructured.Unstructured
+
+		By("Create the Kyma object", func() {
+			Expect(controlPlaneClient.Create(ctx, kyma)).Should(Succeed())
+			updateRequired := kyma.CheckLabelsAndFinalizers()
+			if updateRequired {
+				err := controlPlaneClient.Update(ctx, kyma)
+				Expect(err).ToNot(HaveOccurred())
+			}
+		})
+
+		By("Create some CR with finalizer(s)", func() {
+			issuerCR = createIssuerFor(kyma)
+			Expect(issuerCR).NotTo(BeNil())
+			Expect(controlPlaneClient.Create(ctx, issuerCR)).Should(Succeed())
+			Expect(getObjFinalizers(ctx, client.ObjectKeyFromObject(issuerCR), controlPlaneClient)).
+				Should(ContainElement(testFinalizer))
+		})
+
+		By("Kyma deletion is triggered", func() {
+			err := controlPlaneClient.Delete(ctx, kyma)
+			Expect(err).ToNot(HaveOccurred())
+
+			Eventually(updateKymaStatus(ctx, controlPlaneClient, purgeReconciler.UpdateStatus,
+				client.ObjectKeyFromObject(kyma), v1beta1.StateDeleting), Timeout, Interval).
+				Should(Succeed())
+		})
+
+		By("Target finalizers should be dropped", func() {
+			Eventually(IsKymaInState(ctx, controlPlaneClient, kyma.GetName(), v1beta1.StateDeleting),
+				Timeout, Interval).Should(BeTrue())
+			Eventually(getObjFinalizers, 3*Timeout, Interval).
+				WithContext(ctx).
+				WithArguments(client.ObjectKeyFromObject(issuerCR), controlPlaneClient).
+				Should(BeEmpty())
+		})
+	})
+})
+
+var _ = Describe("When kyma is deleted before configured timeout", Ordered, func() {
+	kyma := NewTestKyma("drop-intantly-kyma")
+
+	It("Should start purging right after the kyma is deleted", func() {
+		var issuerCR *unstructured.Unstructured
+
+		By("Creating the kyma object first", func() {
+			Expect(controlPlaneClient.Create(ctx, kyma)).Should(Succeed())
+			if updateRequired := kyma.CheckLabelsAndFinalizers(); updateRequired {
+				err := controlPlaneClient.Update(ctx, kyma)
+				Expect(err).ToNot(HaveOccurred())
+			}
+		})
+
+		By("Create some CR with finalizer(s)", func() {
+			issuerCR = createIssuerFor(kyma)
+			Expect(issuerCR).NotTo(BeNil())
+			Expect(controlPlaneClient.Create(ctx, issuerCR)).Should(Succeed())
+			Expect(getObjFinalizers(ctx, client.ObjectKeyFromObject(issuerCR), controlPlaneClient)).
+				Should(ContainElement(testFinalizer))
+		})
+
+		By("Triggering kyma deletion and is completely removed", func() {
+			//	Kyma delete event
+			err := controlPlaneClient.Delete(ctx, kyma)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		By("Target finalizers should be dropped immediately", func() {
+			Eventually(getObjFinalizers, 5*time.Second, Interval).
+				WithContext(ctx).
+				WithArguments(client.ObjectKeyFromObject(issuerCR), controlPlaneClient).
+				Should(BeEmpty())
+		})
+	})
+})
+
+func createIssuerObj() *unstructured.Unstructured {
+	gvk := schema.GroupVersionKind{
+		Group:   "cert-manager.io",
+		Version: "v1",
+		Kind:    "Issuer",
+	}
+	res := unstructured.Unstructured{}
+	res.SetGroupVersionKind(gvk)
+	return &res
+}
+
+func createIssuerFor(kyma *v1beta1.Kyma) *unstructured.Unstructured {
+	res := createIssuerObj()
+	res.SetName(kyma.Name)
+	res.SetNamespace(kyma.Namespace)
+	res.SetFinalizers([]string{testFinalizer})
+
+	if err := unstructured.SetNestedMap(res.Object, map[string]interface{}{}, "spec"); err != nil {
+		return nil
+	}
+	if err := unstructured.SetNestedMap(res.Object, map[string]interface{}{}, "spec", "ca"); err != nil {
+		return nil
+	}
+	if err := unstructured.SetNestedField(res.Object, "foobar", "spec", "ca", "secretName"); err != nil {
+		return nil
+	}
+
+	return res
+}
+
+func getObjFinalizers(ctx context.Context, key client.ObjectKey, cl client.Client) []string {
+	res := createIssuerObj()
+	Expect(cl.Get(ctx, key, res)).Should(Succeed())
+	return res.GetFinalizers()
+}
+
+func updateKymaStatus(ctx context.Context, client client.Client, updateStatus func(context.Context, *v1beta1.Kyma,
+	v1beta1.State, string) error, key client.ObjectKey, state v1beta1.State,
+) func() error {
+	return func() error {
+		kyma := v1beta1.Kyma{}
+
+		err := client.Get(ctx, key, &kyma)
+		if err != nil {
+			return err
+		}
+
+		err = updateStatus(ctx, &kyma, state, "TODO: Debugging")
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+}

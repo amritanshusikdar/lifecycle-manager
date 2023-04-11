@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"net/http"
 	"net/http/pprof"
@@ -281,7 +282,47 @@ func setupKymaReconciler(
 		os.Exit(1)
 	}
 
+	if flagVar.enablePurgeFinalizer {
+		setupPurgeReconciler(mgr, remoteClientCache, flagVar, options, kcpRestConfig, skrWebhookManager)
+	}
+
 	metrics.Initialize()
+}
+
+func setupPurgeReconciler(
+	mgr ctrl.Manager,
+	remoteClientCache *remote.ClientCache,
+	flagVar *FlagVar,
+	options controller.Options,
+	restConfig *rest.Config,
+	skrWebhookManager watcher.SKRWebhookManager,
+) {
+	resolveRemoteClientFunc := func(ctx context.Context, key client.ObjectKey) (client.Client, error) {
+		kcpClient := remote.NewClientWithConfig(mgr.GetClient(), restConfig)
+		return remote.NewClientLookup(kcpClient, remoteClientCache, operatorv1beta1.SyncStrategyLocalSecret).Lookup(ctx, key)
+	}
+
+	if err := (&controllers.PurgeReconciler{
+		Client:              mgr.GetClient(),
+		EventRecorder:       mgr.GetEventRecorderFor(operatorv1beta1.OperatorName),
+		KcpRestConfig:       restConfig,
+		RemoteClientCache:   remoteClientCache,
+		ResolveRemoteClient: resolveRemoteClientFunc,
+		SKRWebhookManager:   skrWebhookManager,
+		RequeueIntervals: controllers.RequeueIntervals{
+			Success: flagVar.kymaRequeueSuccessInterval,
+		},
+		VerificationSettings: signature.VerificationSettings{
+			PublicKeyFilePath:   flagVar.moduleVerificationKeyFilePath,
+			ValidSignatureNames: strings.Split(flagVar.moduleVerificationSignatureNames, ":"),
+		},
+		PurgeFinalizerTimeout: flagVar.purgeFinalizerTimeout,
+	}).SetupWithManager(
+		mgr, options,
+	); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PurgeReconciler")
+		os.Exit(1)
+	}
 }
 
 func setupManifestReconciler(
